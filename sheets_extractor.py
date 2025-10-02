@@ -428,6 +428,14 @@ class SheetsExtractor:
                     columns.append(col_name)
         
         return columns
+
+    def _find_column_by_keywords(self, headers: List[str], keywords: List[str]) -> Optional[str]:
+        """Retorna a primeira coluna cujo nome contém alguma das palavras-chave fornecidas."""
+        for col in headers:
+            col_lower = str(col).lower()
+            if any(kw in col_lower for kw in keywords):
+                return col
+        return None
     
     def _column_has_numeric_values(self, col_name: str) -> bool:
         """Verifica se uma coluna tem valores numéricos"""
@@ -526,25 +534,33 @@ class SheetsExtractor:
     
     def get_monthly_summary_by_columns(self) -> Dict:
         """
-        Cria resumo mensal baseado nas colunas E (Data), I (Valor Proposta) e K (Valor Boleto)
-        Soma TODOS os valores sem filtros restritivos
+        Cria resumo mensal identificando colunas por nome (palavras-chave)
+        e soma TODOS os valores sem filtros restritivos.
         """
         if not self.data:
             return {"error": "Nenhum dado disponível"}
         
         try:
             monthly_summary = {}
+            # Detecta colunas uma vez com base no cabeçalho da primeira linha
+            headers_global = list(self.data[0].keys())
+            date_column = self._find_column_by_keywords(headers_global, ['data', 'date'])
+            proposta_column = self._find_column_by_keywords(headers_global, ['proposta'])
+            boleto_column = self._find_column_by_keywords(headers_global, ['boleto'])
+
+            # Fallbacks por heurística de valores numéricos
+            if not proposta_column:
+                candidates = [h for h in headers_global if self._column_has_numeric_values(h)]
+                proposta_column = candidates[0] if candidates else None
+            if not boleto_column:
+                candidates = [h for h in headers_global if self._column_has_numeric_values(h) and h != proposta_column]
+                boleto_column = candidates[0] if candidates else None
+
+            print(f"🔎 Colunas detectadas (Resumo Mensal): data='{date_column}', proposta='{proposta_column}', boleto='{boleto_column}'")
+            if not date_column or not proposta_column or not boleto_column:
+                return {"error": "Não foi possível identificar colunas de Data/Proposta/Boleto pelo cabeçalho"}
+
             for row_idx, row in enumerate(self.data):
-                headers = list(row.keys())
-                
-                # Pega as colunas por índice (sem filtro de quantidade mínima)
-                date_column = headers[4] if len(headers) > 4 else None      # E - Data
-                proposta_column = headers[8] if len(headers) > 8 else None  # I - Valor Proposta  
-                boleto_column = headers[10] if len(headers) > 10 else None  # K - Valor Boleto
-                
-                # Se não tiver as colunas necessárias, pula
-                if not date_column or not proposta_column or not boleto_column:
-                    continue
                 
                 date_value = row.get(date_column, '')
                 proposta_value = row.get(proposta_column, '')
@@ -622,9 +638,9 @@ class SheetsExtractor:
         """
         Extrai dados detalhados para o sistema hierárquico:
         - Por mês
-        - Por tipo (Setup/Mensalidade) - Coluna A
-        - Por empresa - Coluna C
-        - Propostas individuais com colunas C,G,H,E,I,J,K
+        - Por tipo (Setup/Mensalidade)
+        - Por empresa
+        - Propostas individuais usando nomes de colunas
         """
         if not self.data:
             return {"error": "Nenhum dado disponível"}
@@ -632,18 +648,24 @@ class SheetsExtractor:
         try:
             detailed_data = {}
             
+            # Detecta colunas relevantes uma vez
+            headers_global = list(self.data[0].keys())
+            tipo_column = self._find_column_by_keywords(headers_global, ['tipo', 'categoria', 'category', 'type'])
+            empresa_column = self._find_column_by_keywords(headers_global, ['empresa', 'company', 'cliente'])
+            data_column = self._find_column_by_keywords(headers_global, ['data', 'date'])
+            proposta_column = self._find_column_by_keywords(headers_global, ['proposta'])
+            boleto_column = self._find_column_by_keywords(headers_global, ['boleto'])
+
+            # Colunas auxiliares (se existirem)
+            col_g = self._find_column_by_keywords(headers_global, ['g'])
+            col_h = self._find_column_by_keywords(headers_global, ['h'])
+            col_j = self._find_column_by_keywords(headers_global, ['j'])
+
+            print(f"🔎 Colunas detectadas (Detalhado): tipo='{tipo_column}', empresa='{empresa_column}', data='{data_column}', proposta='{proposta_column}', boleto='{boleto_column}'")
+            if not data_column or not proposta_column or not boleto_column:
+                return {"error": "Não foi possível identificar colunas essenciais para dados detalhados"}
+
             for row_idx, row in enumerate(self.data):
-                headers = list(row.keys())
-                
-                # Mapear colunas por índice
-                tipo_column = headers[0] if len(headers) > 0 else None      # A - Tipo (Setup/Mensalidade)
-                empresa_column = headers[2] if len(headers) > 2 else None   # C - Empresa
-                data_column = headers[4] if len(headers) > 4 else None      # E - Data
-                col_g = headers[6] if len(headers) > 6 else None            # G
-                col_h = headers[7] if len(headers) > 7 else None            # H
-                proposta_column = headers[8] if len(headers) > 8 else None  # I - Valor Proposta
-                col_j = headers[9] if len(headers) > 9 else None            # J
-                boleto_column = headers[10] if len(headers) > 10 else None  # K - Valor Boleto
                 
                 # Extrair valores
                 tipo_value = row.get(tipo_column, '').strip() if tipo_column else ''
