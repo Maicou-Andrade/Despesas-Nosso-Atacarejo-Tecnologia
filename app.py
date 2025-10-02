@@ -205,7 +205,12 @@ def main():
                     st.success("✅ Dados atualizados!")
                     st.rerun()
                 else:
-                    st.error("❌ Erro ao carregar dados da planilha.")
+                    # Exibe detalhes do último erro coletado
+                    err = getattr(extractor, 'last_error', '')
+                    if err:
+                        st.error(f"❌ Erro ao carregar dados da planilha: {err}")
+                    else:
+                        st.error("❌ Erro ao carregar dados da planilha.")
     
     # Carrega dados automaticamente na primeira vez
     if 'data_loaded' not in st.session_state:
@@ -218,7 +223,11 @@ def main():
                 st.session_state['extractor'] = extractor
                 st.session_state['data_loaded'] = True
             else:
-                st.error("❌ Erro ao carregar dados iniciais da planilha.")
+                err = getattr(extractor, 'last_error', '')
+                if err:
+                    st.error(f"❌ Erro ao carregar dados iniciais da planilha: {err}")
+                else:
+                    st.error("❌ Erro ao carregar dados iniciais da planilha.")
     
     # Exibe a visualização do calendário
     if 'data_loaded' in st.session_state and st.session_state['data_loaded']:
