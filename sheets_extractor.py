@@ -401,7 +401,7 @@ class SheetsExtractor:
     def _identify_date_columns(self) -> List[str]:
         """Identifica colunas que podem conter datas"""
         date_keywords = [
-            'data', 'date', 'quando', 'dia', 'mes', 'ano', 'time', 'tempo'
+            'data', 'dt', 'date', 'quando', 'dia', 'mes', 'mês', 'ano', 'emissao', 'emissão', 'lancamento', 'lançamento', 'competencia', 'competência', 'periodo', 'período', 'time', 'tempo'
         ]
         
         columns = []
@@ -416,8 +416,8 @@ class SheetsExtractor:
     def _identify_description_columns(self) -> List[str]:
         """Identifica colunas que podem conter descrições"""
         desc_keywords = [
-            'descricao', 'description', 'item', 'produto', 'servico', 'nome',
-            'name', 'titulo', 'title', 'categoria', 'category', 'tipo', 'type'
+            'descricao', 'descrição', 'description', 'item', 'produto', 'servico', 'serviço', 'nome',
+            'name', 'titulo', 'título', 'title', 'categoria', 'category', 'tipo', 'type', 'empresa', 'cliente'
         ]
         
         columns = []
@@ -431,9 +431,18 @@ class SheetsExtractor:
 
     def _find_column_by_keywords(self, headers: List[str], keywords: List[str]) -> Optional[str]:
         """Retorna a primeira coluna cujo nome contém alguma das palavras-chave fornecidas."""
+        # Normaliza palavras com acento removendo acentos simples
+        def normalize(s: str) -> str:
+            s = str(s).lower()
+            replacements = {
+                'á':'a','à':'a','ã':'a','â':'a','é':'e','ê':'e','í':'i','ó':'o','õ':'o','ô':'o','ú':'u','ç':'c','ý':'y'
+            }
+            return ''.join(replacements.get(ch, ch) for ch in s)
+
+        keywords_norm = [normalize(k) for k in keywords]
         for col in headers:
-            col_lower = str(col).lower()
-            if any(kw in col_lower for kw in keywords):
+            col_norm = normalize(col)
+            if any(kw in col_norm for kw in keywords_norm):
                 return col
         return None
     
@@ -544,9 +553,9 @@ class SheetsExtractor:
             monthly_summary = {}
             # Detecta colunas uma vez com base no cabeçalho da primeira linha
             headers_global = list(self.data[0].keys())
-            date_column = self._find_column_by_keywords(headers_global, ['data', 'date'])
-            proposta_column = self._find_column_by_keywords(headers_global, ['proposta'])
-            boleto_column = self._find_column_by_keywords(headers_global, ['boleto'])
+            date_column = self._find_column_by_keywords(headers_global, ['data','dt','date','emissao','emissão','lancamento','lançamento','competencia','competência'])
+            proposta_column = self._find_column_by_keywords(headers_global, ['proposta','orcamento','orçamento','pedido','valor proposta'])
+            boleto_column = self._find_column_by_keywords(headers_global, ['boleto','fatura','duplicata','nf','nota','titulo','título','valor boleto'])
 
             # Fallbacks por heurística de valores numéricos
             if not proposta_column:
@@ -555,6 +564,20 @@ class SheetsExtractor:
             if not boleto_column:
                 candidates = [h for h in headers_global if self._column_has_numeric_values(h) and h != proposta_column]
                 boleto_column = candidates[0] if candidates else None
+
+            # Fallback para data: procurar qualquer coluna cujo conteúdo pareça data
+            if not date_column:
+                for h in headers_global:
+                    # Verifica algumas linhas para padrões de data
+                    has_date_like = False
+                    for row in self.data[:10]:
+                        val = row.get(h, '')
+                        if val and self._extract_month_year_from_date(val):
+                            has_date_like = True
+                            break
+                    if has_date_like:
+                        date_column = h
+                        break
 
             print(f"🔎 Colunas detectadas (Resumo Mensal): data='{date_column}', proposta='{proposta_column}', boleto='{boleto_column}'")
             if not date_column or not proposta_column or not boleto_column:
