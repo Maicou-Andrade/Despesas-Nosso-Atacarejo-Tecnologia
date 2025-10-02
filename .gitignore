@@ -1,0 +1,17 @@
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env/Secrets
+.env
+token.pickle
+credentials.json
+credentials_old.json
+credentials*.json
