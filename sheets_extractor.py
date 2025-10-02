@@ -24,6 +24,8 @@ class SheetsExtractor:
         self.data = []
         self.contracts_data = []
         self.processed_data = {}
+        # Último erro ocorrido durante extração/autenticação (para exibir no UI)
+        self.last_error = ""
     
     def authenticate(self) -> bool:
         """
@@ -62,14 +64,18 @@ class SheetsExtractor:
                 creds = ServiceAccountCredentials.from_service_account_info(sa_info, scopes=SCOPES)
                 self.service = build('sheets', 'v4', credentials=creds)
                 print("✅ Autenticação realizada via Service Account (info em segredos/env).")
+                self.last_error = ""
                 return True
             elif keyfile_path and os.path.exists(keyfile_path):
                 creds = ServiceAccountCredentials.from_service_account_file(keyfile_path, scopes=SCOPES)
                 self.service = build('sheets', 'v4', credentials=creds)
                 print(f"✅ Autenticação realizada via Service Account (arquivo: {keyfile_path}).")
+                self.last_error = ""
                 return True
         except Exception as e:
-            print(f"⚠️ Falha ao autenticar com Service Account: {e}. Tentando OAuth local.")
+            err = f"Falha ao autenticar com Service Account: {e}"
+            print(f"⚠️ {err}. Tentando OAuth local.")
+            self.last_error = err
 
         # 2) Fallback: OAuth2 local (desenvolvimento na máquina)
         # Verifica se já existe token salvo
@@ -89,6 +95,7 @@ class SheetsExtractor:
                 if not os.path.exists('credentials.json'):
                     print("❌ Arquivo credentials.json não encontrado para OAuth local.")
                     print("💡 Dica: em produção (Streamlit Cloud), use Service Account e configure 'GOOGLE_SERVICE_ACCOUNT_JSON' em segredos.")
+                    self.last_error = "Arquivo credentials.json não encontrado para OAuth local. Configure Service Account em produção."
                     return False
                 print("🔐 Iniciando autenticação OAuth2 local...")
                 flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
@@ -102,6 +109,7 @@ class SheetsExtractor:
         # Constrói o serviço da API
         self.service = build('sheets', 'v4', credentials=creds)
         print("✅ Autenticação realizada com sucesso (OAuth local).")
+        self.last_error = ""
         return True
     
     def extract_data_from_sheet(self, sheet_url: str) -> bool:
@@ -116,7 +124,9 @@ class SheetsExtractor:
             # Extrai o ID da planilha
             sheet_id = self._extract_sheet_id(sheet_url)
             if not sheet_id:
-                print("❌ Não foi possível extrair o ID da planilha")
+                msg = "Não foi possível extrair o ID da planilha a partir da URL"
+                print(f"❌ {msg}")
+                self.last_error = msg
                 return False
             
             # Extrai o gid da aba específica (se houver)
@@ -135,9 +145,11 @@ class SheetsExtractor:
                 if not self.authenticate():
                     return False
             return self._extract_with_oauth2(sheet_id, gid)
-                
+
         except Exception as e:
-            print(f"❌ Erro na extração: {str(e)}")
+            err = f"Erro na extração: {str(e)}"
+            print(f"❌ {err}")
+            self.last_error = err
             return False
     
     def _extract_sheet_id(self, sheet_url: str) -> Optional[str]:
@@ -210,7 +222,9 @@ class SheetsExtractor:
             values = result.get('values', [])
             
             if not values:
-                print("❌ Planilha vazia")
+                msg = "Planilha vazia ou sem dados acessíveis"
+                print(f"❌ {msg}")
+                self.last_error = msg
                 return False
             
             # Converte para formato de lista de dicionários
@@ -232,10 +246,13 @@ class SheetsExtractor:
                     self.data.append(row_dict)
             
             print(f"✅ Dados extraídos via OAuth2: {len(self.data)} registros")
+            self.last_error = ""
             return True
                 
         except Exception as e:
-            print(f"❌ Erro no OAuth2: {str(e)}")
+            err = f"Erro no OAuth2: {str(e)}"
+            print(f"❌ {err}")
+            self.last_error = err
             return False
 
     def _extract_public_csv(self, sheet_id: str, gid: Optional[str] = None) -> bool:
@@ -252,6 +269,7 @@ class SheetsExtractor:
             resp = requests.get(csv_url, timeout=30)
             if resp.status_code != 200:
                 print(f"⚠️ CSV público retornou status {resp.status_code}")
+                self.last_error = f"CSV público retornou status {resp.status_code}. Se a planilha for privada, compartilhe com o Service Account."
                 return False
 
             # Lê o CSV em memória
@@ -276,9 +294,12 @@ class SheetsExtractor:
                     self.data.append(row_dict)
 
             print(f"✅ Dados extraídos via CSV: {len(self.data)} registros")
+            self.last_error = ""
             return True
         except Exception as e:
-            print(f"❌ Erro ao extrair CSV público: {str(e)}")
+            err = f"Erro ao extrair CSV público: {str(e)}"
+            print(f"❌ {err}")
+            self.last_error = err
             return False
     
     def process_expenses(self) -> Dict:
@@ -866,7 +887,9 @@ class SheetsExtractor:
                     break
             
             if not contracts_sheet_name:
-                print("❌ Aba 'Contratos - Tecnologia' não encontrada")
+                msg = "Aba 'Contratos - Tecnologia' não encontrada"
+                print(f"❌ {msg}")
+                self.last_error = msg
                 return False
             
             print(f"🎯 Extraindo dados da aba: {contracts_sheet_name}")
@@ -1039,7 +1062,9 @@ class SheetsExtractor:
             }
             
         except Exception as e:
-            print(f"⚠️ Erro ao calcular projeção para contrato: {str(e)}")
+            err = f"Erro ao calcular projeção para contrato: {str(e)}"
+            print(f"⚠️ {err}")
+            self.last_error = err
             return None
 
     def _parse_contract_date(self, date_str: str) -> Optional[datetime]:

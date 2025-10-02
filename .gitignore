@@ -15,3 +15,5 @@ token.pickle
 credentials.json
 credentials_old.json
 credentials*.json
+# Streamlit secrets (não versionar)
+.streamlit/secrets.toml
