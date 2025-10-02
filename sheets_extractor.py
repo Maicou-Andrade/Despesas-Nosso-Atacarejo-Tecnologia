@@ -579,15 +579,17 @@ class SheetsExtractor:
                         date_column = h
                         break
 
+            print(f"🔎 Cabeçalhos disponíveis: {headers_global}")
             print(f"🔎 Colunas detectadas (Resumo Mensal): data='{date_column}', proposta='{proposta_column}', boleto='{boleto_column}'")
-            if not date_column or not proposta_column or not boleto_column:
-                return {"error": "Não foi possível identificar colunas de Data/Proposta/Boleto pelo cabeçalho"}
+            # Exige apenas coluna de data; calcula com o que estiver disponível
+            if not date_column:
+                return {"error": "Não foi possível identificar coluna de Data pelo cabeçalho"}
 
             for row_idx, row in enumerate(self.data):
                 
                 date_value = row.get(date_column, '')
-                proposta_value = row.get(proposta_column, '')
-                boleto_value = row.get(boleto_column, '')
+                proposta_value = row.get(proposta_column, '') if proposta_column else ''
+                boleto_value = row.get(boleto_column, '') if boleto_column else ''
                 
                 # Só pula se não tiver data (necessária para agrupamento)
                 if not date_value:
