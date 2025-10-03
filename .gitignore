@@ -17,3 +17,7 @@ credentials_old.json
 credentials*.json
 # Streamlit secrets (não versionar)
 .streamlit/secrets.toml
+
+# Local backups
+/_backup_*/
+/_backup_*
